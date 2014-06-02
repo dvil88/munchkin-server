@@ -2,23 +2,22 @@
  * Munchkin online server
  */
 
+var config = require('./config');
 var ws = require('socket.io').listen(1337);
 var mysql = require('mysql');
 var crypto = require('crypto');
 
-var minPlayers = 3;
-var maxPlayers = 8;
 var rooms = {};
 var players = {};
-vat matches = {};
+var matches = {};
 
 
 /* MySQL connection */
 var db = mysql.createConnection({
-	host: 'YOUR_HOST',
-	user: 'YOUR_USER',
-	password: 'YOUR_PASSWORD',
-	database: 'YOUR_DATABASE'
+	host: config.db.host,
+	user: config.db.user,
+	password: config.db.password,
+	database: config.db.database
 });
 db.connect();
 
@@ -155,7 +154,7 @@ ws.sockets.on('connection', function (client) {
 		var player = players[clientId];
 
 		// Check if room is full
-		if(Object.keys(rooms[roomId].players).length == maxPlayers){
+		if(Object.keys(rooms[roomId].players).length == config.maxPlayers){
 			return sendError('The room is full');
 		} 
 
