@@ -2,12 +2,12 @@
 
 Munchkin server to munchkin online
 
-## Dependencies:
-[node-mysql](https://github.com/felixge/node-mysql)
+## Dependencies
+[node-mysql](https://github.com/felixge/node-mysql):
 ```sh
-	npm install mysql
+npm install mysql
 ```
-[socket.io](https://www.npmjs.org/package/socket.io)
+[socket.io](https://www.npmjs.org/package/socket.io):
 ```sh
-	npm install socket.io
+npm install socket.io
 ```
