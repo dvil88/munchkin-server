@@ -10,6 +10,7 @@ var tables = {
 }
 
 var playerTurns = {};
+var matchesTurns = {};
 
 var match = {
 	newMatch: function(matchId,playerList){
@@ -21,6 +22,7 @@ var match = {
 				var turn = 1;
 				var data = [];
 				playerTurns[matchId] = {};
+				matchesTurns[matchId] = {diceValue: '0', players: []};
 
 				for(var key in playerList){
 					data.push({playerId : playerList[key].playerId, turn: turn});
@@ -37,13 +39,51 @@ var match = {
 	},
 	setTurnValue: function(matchId,playerId){
 		if(playerTurns[matchId][playerId].diceValue > 0){return -1;}
+		var mt = matchesTurns[matchId];
+		var maxPlayers = parseFloat(Object.keys(playerTurns[matchId]).length);
+		console.log(maxPlayers);
 
-		var result = this.throwDice();
-		playerTurns[matchId][playerId].diceValue = result;
+		var diceValue = this.throwDice();
+		playerTurns[matchId][playerId].diceValue = diceValue;
 
-		// TODO: check if everyone threw the dice and calculate who goes first
+		if(diceValue >= mt.diceValue){
+			if(diceValue > mt.diceValue){mt.players = [];}
+			mt.diceValue = diceValue;
+			mt.players.push(playerId);
+		}
 
-		return result;
+		// check if everyone threw the dice and calculate who goes first
+		var turnCompleted = true;
+		for(key in playerTurns[matchId]){if(playerTurns[matchId][key].diceValue == 0){turnCompleted = false;}}
+		if(turnCompleted){
+			var roomPlayers = main.rooms[matchId].players;
+			for(var clientId in roomPlayers){
+				var player = main.players[clientId];
+
+				var data = {matchId: matchId};
+				if(mt.players.length > 1 && mt.players.indexOf(player.uniqId) !== false){
+					playerTurns[matchId][player.uniqId].diceValue = '0';
+					player.socket.emit('turnRepeat',data);
+				}
+				else{player.socket.emit('turnCompleted',data);}
+			}
+			if(mt.players.length > 1){mt = {diceValue: '0', players: []};}
+			else{
+				var initPlayer = mt.players.pop();
+				var turnDiff = parseFloat(playerTurns[matchId][initPlayer].turn - 1);
+
+				for(playerId in playerTurns[matchId]){
+					var newTurn = parseFloat(playerTurns[matchId][playerId].turn) - parseFloat(turnDiff);
+					if(newTurn <= 0){newTurn = parseFloat(newTurn)+maxPlayers;}
+					playerTurns[matchId][playerId].turn = newTurn;
+				}
+				console.log(playerTurns[matchId]);
+
+			}
+		}
+
+
+		return diceValue;
 	},
 
 
@@ -62,7 +102,5 @@ function startMatch(matchId){
 		player.socket.emit('matchStartResult',data);
 	}
 }
-
-
 
 module.exports = match;
