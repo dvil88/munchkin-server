@@ -41,7 +41,6 @@ var match = {
 		if(playerTurns[matchId][playerId].diceValue > 0){return -1;}
 		var mt = matchesTurns[matchId];
 		var maxPlayers = parseFloat(Object.keys(playerTurns[matchId]).length);
-		console.log(maxPlayers);
 
 		var diceValue = this.throwDice();
 		playerTurns[matchId][playerId].diceValue = diceValue;
@@ -77,8 +76,6 @@ var match = {
 					if(newTurn <= 0){newTurn = parseFloat(newTurn)+maxPlayers;}
 					playerTurns[matchId][playerId].turn = newTurn;
 				}
-				console.log(playerTurns[matchId]);
-
 			}
 		}
 
