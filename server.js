@@ -9,7 +9,10 @@ var crypto = require('crypto');
 
 var rooms = {};
 var players = {};
-var matches = {};
+exports.rooms = rooms;
+exports.players = players;
+
+var match = require('./match');
 
 
 /* MySQL connection */
@@ -24,8 +27,8 @@ db.connect();
 
 /* Load rooms */
 var sql = 'select * from rooms where status = \'waiting\'';
-db.query(sql,function(err,rows){
-	rows.forEach(function(room){
+db.query(sql,function (err,rows){
+	rows.forEach(function (room){
 		rooms[room.uniqId] = {id: room.id, name: room.name, password: room.password, master: room.master, status: room.status, players: {}};
 	});
 });
@@ -34,24 +37,24 @@ db.query('truncate roomPlayers');
 
 
 /* Server code */
-ws.sockets.on('connection', function (client) {
+ws.sockets.on('connection', function (client){
 	/* Login user */
-	client.on('loginUser',function(data){
+	client.on('loginUser',function (data){
 		userLogin(data);
 	});
 
 	/* Register user */
-	client.on('registerUser',function(data){
+	client.on('registerUser',function (data){
 		userRegister(data);
 	});
 
 	/* Create room */
-	client.on('createRoom',function(data){
+	client.on('createRoom',function (data){
 		createRoom(data);
 	});
 
 	/* List rooms */
-	client.on('listRooms',function(){
+	client.on('listRooms',function (){
 		var roomList = clone(rooms);
 
 		for(key in roomList){
@@ -63,28 +66,30 @@ ws.sockets.on('connection', function (client) {
 	});
 
 	/* Player joins to a room */
-	client.on('joinRoom',function(data){
+	client.on('joinRoom',function (data){
 		if(players.hasOwnProperty(client.id) === true){
 			joinRoom(client.id,data.roomId,data.password);
 		}
 	});
 
 	/* Player leaves a room */
-	client.on('leaveRoom',function(roomId){
+	client.on('leaveRoom',function (roomId){
 		if(players.hasOwnProperty(client.id) === true){
 			leaveRoom(client.id,roomId);
 		}
 	});
 
 	/* Player ready to play */
-	client.on('playerReady',function(data){
+	client.on('playerReady',function (data){
 		if(players.hasOwnProperty(client.id) === true){
 			playerReady(client.id,data.roomId,data.status);
 		}
 	});
 
+
+	/* Match events */
 	/* Master has started the match */
-	client.on('startMatch',function(roomId){
+	client.on('startMatch',function (roomId){
 		if(rooms[roomId].master != players[client.id].uniqId){
 			return sendError('You can\'t start the match, you are not the master');
 		}
@@ -92,13 +97,23 @@ ws.sockets.on('connection', function (client) {
 		startMatch(roomId);
 	});
 
-	client.on('changeMaster',function(data){
+	client.on('changeMaster',function (data){
+	});
 
+	client.on('throwDice',function (data){
+		var result = match.throwDice();
+		if(data.mode == 'turn'){
+			result = match.setTurnValue(data.roomId,players[client.id].uniqId);
+			if(result == -1){
+				return sendError('You already threw the dice.');
+			}
+		}
+		client.emit('throwDiceResult',{roomId: data.roomId, mode: data.mode, value: result});
 	});
 
 
 	/* handle client disconnections */
-	client.on('disconnect',function(){
+	client.on('disconnect',function (data){
 		// Delete player from game
 		if(players.hasOwnProperty(client.id) === true){
 			var player = players[client.id];
@@ -117,7 +132,7 @@ ws.sockets.on('connection', function (client) {
 	/* Server functions */
 	function userLogin(data){
 		var sql = 'select * from users where username = '+db.escape(data.username);
-		db.query(sql,function(err,user){
+		db.query(sql,function (err,user){
 			user = user[0];
 			
 			var loginResult = {success: false, errorMsg:'Login incorrect'};
@@ -138,7 +153,7 @@ ws.sockets.on('connection', function (client) {
 		data.salt = salt;
 		data.password = hashedPassword;
 
-		var query = db.query('INSERT INTO users SET ?', data, function(err, result) {
+		var query = db.query('INSERT INTO users SET ?', data, function (err, result) {
 			if(!err){
 				data.password = plainPass;
 				userLogin(data);
@@ -153,7 +168,7 @@ ws.sockets.on('connection', function (client) {
 		data.status = 'waiting';
 		data.uniqId = encryptPassword(makeSalt(),makeSalt()).substr(1,10);
 
-		var query = db.query('INSERT INTO rooms SET ?', data, function(err, result) {
+		var query = db.query('INSERT INTO rooms SET ?', data, function (err, result) {
 			if(!err){
 				var roomId = result.insertId;
 
@@ -183,7 +198,7 @@ ws.sockets.on('connection', function (client) {
 		}
 
 		var data = {roomId:rooms[roomId].id, playerId:player.id}
-		var query = db.query('INSERT INTO roomPlayers SET ?', data, function(err, result) {
+		var query = db.query('INSERT INTO roomPlayers SET ?', data, function (err, result) {
 			if(!err){
 				var numPlayers = Object.keys(rooms[roomId].players).length;
 
@@ -250,26 +265,15 @@ ws.sockets.on('connection', function (client) {
 	function startMatch(roomId){
 		// check if there are enough players
 		var numPlayers = Object.keys(rooms[roomId].players).length;
-		if(numPlayers < config.minPlayers){return sendError('There aren\'t enough players to start the match, you need at least '+config.minPlayers+' players');}
+		// UNCOMMENT THIS!!!!! // if(numPlayers < config.minPlayers){return sendError('There aren\'t enough players to start the match, you need at least '+config.minPlayers+' players');}
 
 		// check if everyone is ready
 		var ready = true;for(key in rooms[roomId].players){if(rooms[roomId].players[key].status == 'notready'){ready = false;}}
 		if(!ready){return sendError('All the players should be ready to start the match');}
 
-		db.query('update rooms set status = \'playing\' where id = '+db.escape(roomId),function(err,result){
+		db.query('update rooms set status = \'playing\' where id = '+db.escape(roomId),function (err,result){
 			if(!err){
-				rooms[roomId].status = 'playing';
-
-				// Send match confirmation to all the players in the room
-				var roomPlayers = rooms[roomId].players;
-				for(var playerId in roomPlayers){
-					var player = players[playerId];
-
-					var data = {roomId: roomId};
-					player.socket.emit('matchStartResult',data)
-				}
-			}else{
-				console.log(err);
+				match.newMatch(roomId,rooms[roomId].players);
 			}
 		});
 	}
