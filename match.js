@@ -70,21 +70,32 @@ var match = {
 			}
 			if(mt.players.length > 1){mt = {diceValue: '0', players: []};}
 			else{
+				// Calculate who goes first
 				var initPlayer = mt.players.pop();
 				var turnDiff = parseFloat(playerTurns[matchId][initPlayer].turn - 1);
 
+				var firstPlayer = rightPlayer = leftPlayer = '';
 				for(playerId in playerTurns[matchId]){
 					var newTurn = parseFloat(playerTurns[matchId][playerId].turn) - parseFloat(turnDiff);
 					if(newTurn <= 0){newTurn = parseFloat(newTurn)+maxPlayers;}
 					playerTurns[matchId][playerId].turn = newTurn;
+
+					// Circular path
+					if(firstPlayer == ''){firstPlayer = playerId;}
+					if(leftPlayer != ''){
+						playerTurns[matchId][playerId].left = leftPlayer;
+						playerTurns[matchId][leftPlayer].right = playerId;
+					}
+					leftPlayer = playerId;
 				}
+				// First and last players in circular path
+				playerTurns[matchId][firstPlayer].left = playerId;
+				playerTurns[matchId][playerId].right = firstPlayer;
 			}
 		}
 
-
 		return diceValue;
 	},
-
 
 	throwDice: function(){return Math.floor((Math.random() * 6) + 1);},
 }
