@@ -60,11 +60,13 @@ var match = {
 				var player = main.players[clientId];
 
 				var data = {matchId: matchId};
-				if(mt.players.length > 1 && mt.players.indexOf(player.uniqId) !== false){
+				if(mt.players.length > 1 && mt.players.indexOf(player.uniqId) != -1){
 					playerTurns[matchId][player.uniqId].diceValue = '0';
 					player.socket.emit('turnRepeat',data);
+				}else{
+					playerTurns[matchId][player.uniqId].diceValue = '-1';
+					player.socket.emit('turnCompleted',data);
 				}
-				else{player.socket.emit('turnCompleted',data);}
 			}
 			if(mt.players.length > 1){mt = {diceValue: '0', players: []};}
 			else{
