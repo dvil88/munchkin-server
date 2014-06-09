@@ -23,6 +23,7 @@ var db = mysql.createConnection({
 	database: config.db.database
 });
 db.connect();
+exports.db = db;
 
 
 /* Load rooms */
@@ -34,7 +35,6 @@ db.query(sql,function (err,rows){
 });
 /* Clear roomPlayers */
 db.query('truncate roomPlayers');
-
 
 /* Server code */
 ws.sockets.on('connection', function (client){
