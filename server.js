@@ -12,7 +12,6 @@ var players = {};
 exports.rooms = rooms;
 exports.players = players;
 
-var match = require('./match');
 
 
 /* MySQL connection */
@@ -24,6 +23,8 @@ var db = mysql.createConnection({
 });
 db.connect();
 exports.db = db;
+
+var match;
 
 
 /* Load rooms */
@@ -101,14 +102,9 @@ ws.sockets.on('connection', function (client){
 	});
 
 	client.on('throwDice',function (data){
-		var result = match.throwDice();
-		if(data.mode == 'turn'){
-			result = match.setTurnValue(data.roomId,players[client.id].uniqId);
-			if(result == -1){
-				return sendError('You already threw the dice.');
-			}
+		if(players.hasOwnProperty(client.id) === true){
+			throwDice(data);
 		}
-		client.emit('throwDiceResult',{roomId: data.roomId, mode: data.mode, value: result});
 	});
 
 
@@ -127,6 +123,10 @@ ws.sockets.on('connection', function (client){
 			delete players[client.id];
 		}
 	});
+
+	
+	exports.client = client;
+	match = require('./match');
 
 
 	/* Server functions */
@@ -276,6 +276,17 @@ ws.sockets.on('connection', function (client){
 				match.newMatch(roomId,rooms[roomId].players);
 			}
 		});
+	}
+
+	function throwDice(data){
+		var result = match.throwDice();
+		if(data.mode == 'turn'){
+			result = match.setTurnValue(data.roomId,players[client.id].uniqId);
+			if(result == -1){
+				return sendError('You already threw the dice.');
+			}
+		}
+		client.emit('throwDiceResult',{roomId: data.roomId, mode: data.mode, value: result});
 	}
 
 

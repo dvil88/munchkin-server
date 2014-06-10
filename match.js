@@ -4,6 +4,12 @@
 var sqlite3 = require('./inc.sqlite3.bin');
 var main = require('./server');
 
+/* main functions */
+var client = main.client;
+var rooms = main.rooms;
+var players = main.players;
+var db = main.db;
+
 var tables = {
 	players: {_id_:'INTEGER AUTOINCREMENT',playerId:'INTEGER',turn:'INTEGER'},
 	turns: {_turn_: 'INTEGER AUTOINCREMENT',playerId:'INTEGER',turnData:'TEXT',timestamp:'TIMESTAMP'},
@@ -13,6 +19,34 @@ var playerTurns = {};
 var matchesTurns = {};
 var matches = {};
 
+
+/* Extend server calls */
+client.on('kickDoor',function(data){
+	var player = players[client.id];
+	var playerId = player.uniqId;
+	var matchId = data.matchId;
+
+	var card = match.getCards(matchId,'door',1)[0];
+
+	var roomPlayers = rooms[matchId].players;
+	for(var clientId in roomPlayers){
+		player.socket.emit('doorKicked',{matchId: matchId, playerId: playerId, card: card});
+	}
+});
+client.on('playCard',function(data){
+	var player = players[client.id];
+	var playerId = player.uniqId;
+	var matchId = data.matchId;
+
+	var card = matches[matchId].players[playerId].cards.hand[data.cardId];
+	delete matches[matchId].players[playerId].cards.hand[data.cardId];
+	matches[matchId].players[playerId].cards.play[data.cardId] = card;
+
+	player.socket.emit('playerCards',{matchId: matchId, cards: matches[matchId].players[playerId].cards});
+});
+
+
+/* Match logic */
 var match = {
 	newMatch: function(matchId,playerList){
 		sqlite3.open('matches/'+matchId+'.db',function(db){
@@ -28,7 +62,7 @@ var match = {
 
 				for(var key in playerList){
 					data.push({playerId : playerList[key].playerId, turn: turn});
-					playerTurns[matchId][playerList[key].playerId] = {turn: turn++, diceValue: 0, level: 1, cards: {hand: [], play: []}};
+					playerTurns[matchId][playerList[key].playerId] = {turn: turn++, diceValue: 0, level: 1, cards: {hand: {}, play: {}}};
 				}
 
 				sqlite3.insertInto(db,'players',data,function(data){
@@ -62,9 +96,9 @@ var match = {
 		var turnCompleted = true;
 		for(key in playerTurns[matchId]){if(playerTurns[matchId][key].diceValue == 0){turnCompleted = false;}}
 		if(turnCompleted){
-			var roomPlayers = main.rooms[matchId].players;
+			var roomPlayers = rooms[matchId].players;
 			for(var clientId in roomPlayers){
-				var player = main.players[clientId];
+				var player = players[clientId];
 
 				var data = {matchId: matchId};
 				if(mt.players.length > 1 && mt.players.indexOf(player.uniqId) != -1){
@@ -105,14 +139,15 @@ var match = {
 				// TODO: Update database with turns
 
 				// Give cards to player
-				var roomPlayers = main.rooms[matchId].players;
+				var roomPlayers = rooms[matchId].players;
 				for(var clientId in roomPlayers){
-					var player = main.players[clientId];
+					var player = players[clientId];
 					var playerId = player.uniqId;
 
-					var doors = match.getCards(matchId,playerId,'door',4);
-					var treasures = match.getCards(matchId,playerId,'treasure',4);
-					var cards = doors.concat(treasures);
+					var doors = match.getCards(matchId,'door',4);
+					var treasures = match.getCards(matchId,'treasure',4);
+					var c = doors.concat(treasures);
+					var cards = {};c.forEach(function(card){cards[card.id] = card;});
 					matches[matchId].players[playerId].cards.hand = cards;
 
 					player.socket.emit('playerCards',{matchId: matchId, cards: matches[matchId].players[playerId].cards});
@@ -125,14 +160,13 @@ var match = {
 
 	throwDice: function(){return Math.floor((Math.random() * 6) + 1);},
 	generateDecks: function(matchId,expansion){
-		var db = main.db;
 		var cards = {door: [], treasure: []};
 
 		// Get cards
 		var sql = 'select * from cards where expansion = '+db.escape(expansion);
 		db.query(sql,function (err,rows){
 			rows.forEach(function (card){
-				if(card.type == 1){cards['door'].push(card);}
+				if(card.cardType == 1){cards['door'].push(card);}
 				else{cards['treasure'].push(card);}
 			});
 
@@ -141,7 +175,7 @@ var match = {
 			matches[matchId].cards = cards;
 		});
 	},
-	getCards: function(matchId,playerId,cardType,cardsNumber){
+	getCards: function(matchId,cardType,cardsNumber){
 		var cards = [];
 		for(var i = 0; i < cardsNumber; i++){
 			cards.push(matches[matchId].cards[cardType].pop());
@@ -151,23 +185,21 @@ var match = {
 }
 
 function startMatch(matchId){
-	main.rooms[matchId].status = 'playing';
+	rooms[matchId].status = 'playing';
 
-	// Get cards and send match confirmation to all the players in the room
-	var roomPlayers = main.rooms[matchId].players;
+	// Send match confirmation to all the players in the room
+	var roomPlayers = rooms[matchId].players;
 	for(var playerId in roomPlayers){
-		var player = main.players[playerId];
-
-
+		var player = players[playerId];
 
 		var data = {roomId: matchId};
 		player.socket.emit('matchStartResult',data);
 	}
 }
 
-function shuffle(array) {
+function shuffle(array){
 	var m = array.length, t, i;
-	while (m) {
+	while(m){
 		i = Math.floor(Math.random() * m--);
 
 		t = array[m];
